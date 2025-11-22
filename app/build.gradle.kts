@@ -57,7 +57,7 @@ dependencies {
     kapt("androidx.room:room-compiler:$roomVersion")
 
     // Firebase
-    implementation(platform("com.google.firebase:firebase-bom:32.7.1"))
+    implementation(platform("com.google.firebase:firebase-bom:34.6.0"))
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-database-ktx")
