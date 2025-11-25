@@ -90,21 +90,29 @@ class ScreenTimeRepository(private val context: Context) {
 
     /**
      * Calculate actual screen-on time using UsageStats
-     * This matches Digital Wellbeing by summing foreground time of all apps
+     * Uses INTERVAL_BEST to get accurate per-day stats without duplicates
      */
     private fun calculateScreenTime(startTime: Long, endTime: Long): Long {
         var totalScreenTime = 0L
 
         try {
-            // Use INTERVAL_DAILY for better accuracy
+            // Use INTERVAL_BEST for accurate stats
             val usageStatsList = usageStatsManager.queryUsageStats(
-                UsageStatsManager.INTERVAL_DAILY,
+                UsageStatsManager.INTERVAL_BEST,
                 startTime,
                 endTime
             )
 
-            // Sum up foreground time for all apps (same as Digital Wellbeing)
+            // Track packages to avoid duplicates
+            val seenPackages = mutableSetOf<String>()
+            
+            // Sum up foreground time for unique apps only
             for (usageStats in usageStatsList) {
+                // Skip if already counted or no usage
+                if (usageStats.packageName in seenPackages) continue
+                if (usageStats.totalTimeInForeground <= 0) continue
+                
+                seenPackages.add(usageStats.packageName)
                 totalScreenTime += usageStats.totalTimeInForeground
             }
 

@@ -38,6 +38,8 @@ class LoginActivity : AppCompatActivity() {
                     .addOnCompleteListener { task ->
                         setLoading(false)
                         if (task.isSuccessful) {
+                            // Ensure profile exists (for users who registered before profile feature)
+                            ensureUserProfile(email)
                             startMainActivity()
                         } else {
                             Toast.makeText(this, "Login Failed: ${task.exception?.message}", Toast.LENGTH_SHORT).show()
@@ -64,6 +66,31 @@ class LoginActivity : AppCompatActivity() {
                         }
                     }
             }
+        }
+
+        binding.btnForgotPassword.setOnClickListener {
+            val email = binding.etEmail.editText?.text.toString().trim()
+            
+            if (email.isEmpty()) {
+                binding.etEmail.error = "Enter your email first"
+                return@setOnClickListener
+            }
+            
+            if (!Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+                binding.etEmail.error = "Please enter a valid email"
+                return@setOnClickListener
+            }
+            
+            setLoading(true)
+            auth.sendPasswordResetEmail(email)
+                .addOnCompleteListener { task ->
+                    setLoading(false)
+                    if (task.isSuccessful) {
+                        Toast.makeText(this, "Password reset email sent! Check your inbox.", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(this, "Failed: ${task.exception?.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
         }
     }
 
@@ -105,6 +132,22 @@ class LoginActivity : AppCompatActivity() {
         )
         
         database.child("users").child(userId).child("profile").setValue(profileData)
+    }
+
+    /**
+     * Ensure user profile exists - creates one if missing (for existing users)
+     */
+    private fun ensureUserProfile(email: String) {
+        val userId = auth.currentUser?.uid ?: return
+        val database = FirebaseDatabase.getInstance().reference
+        
+        database.child("users").child(userId).child("profile").get()
+            .addOnSuccessListener { snapshot ->
+                if (!snapshot.exists()) {
+                    // Profile doesn't exist, create it
+                    saveUserProfile(email)
+                }
+            }
     }
 
     private fun setLoading(loading: Boolean) {

@@ -79,6 +79,11 @@ class GroupDashboardFragment : Fragment() {
                 copyToClipboard(groupId)
             }
         }
+        
+        // Click on group title to switch groups
+        binding.tvGroupTitle.setOnClickListener {
+            showSwitchGroupDialog()
+        }
 
         // Load saved group if exists
         loadSavedGroup()
@@ -89,7 +94,7 @@ class GroupDashboardFragment : Fragment() {
         val savedGroupName = prefsManager.currentGroupName
         
         if (savedGroupId != null) {
-            binding.tvGroupTitle.text = savedGroupName ?: "My Group"
+            binding.tvGroupTitle.text = "$savedGroupName ▼"  // Add dropdown indicator
             binding.tvGroupTitle.visibility = View.VISIBLE
             binding.tvGroupIdDisplay.text = savedGroupId
             binding.groupInfoCard.visibility = View.VISIBLE
@@ -98,6 +103,36 @@ class GroupDashboardFragment : Fragment() {
             binding.groupInfoCard.visibility = View.GONE
             binding.tvGroupTitle.visibility = View.GONE
         }
+    }
+    
+    private fun showSwitchGroupDialog() {
+        val groups = prefsManager.getAllGroups()
+        
+        if (groups.isEmpty()) {
+            Toast.makeText(context, "No groups yet. Create or join a group!", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        val groupNames = groups.values.toTypedArray()
+        val groupIds = groups.keys.toTypedArray()
+        
+        AlertDialog.Builder(requireContext())
+            .setTitle("Switch Group")
+            .setItems(groupNames) { _, which ->
+                val selectedId = groupIds[which]
+                val selectedName = groupNames[which]
+                
+                prefsManager.currentGroupId = selectedId
+                prefsManager.currentGroupName = selectedName
+                
+                binding.tvGroupTitle.text = "$selectedName ▼"
+                binding.tvGroupIdDisplay.text = selectedId
+                viewModel.loadGroupData(selectedId)
+                
+                Toast.makeText(context, "Switched to $selectedName", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun copyToClipboard(text: String) {
@@ -124,8 +159,9 @@ class GroupDashboardFragment : Fragment() {
                         if (groupId != null) {
                             prefsManager.currentGroupId = groupId
                             prefsManager.currentGroupName = name
+                            prefsManager.addGroup(groupId, name)  // Save to groups list
                             binding.tvGroupIdDisplay.text = groupId
-                            binding.tvGroupTitle.text = name
+                            binding.tvGroupTitle.text = "$name ▼"
                             binding.tvGroupTitle.visibility = View.VISIBLE
                             binding.groupInfoCard.visibility = View.VISIBLE
                             Toast.makeText(context, "Group Created! Share the ID with friends.", Toast.LENGTH_LONG).show()
@@ -157,10 +193,12 @@ class GroupDashboardFragment : Fragment() {
                 if (groupId.isNotEmpty()) {
                     viewModel.joinGroup(groupId) { success, groupName ->
                         if (success) {
+                            val finalName = groupName ?: "My Group"
                             prefsManager.currentGroupId = groupId
-                            prefsManager.currentGroupName = groupName
+                            prefsManager.currentGroupName = finalName
+                            prefsManager.addGroup(groupId, finalName)  // Save to groups list
                             binding.tvGroupIdDisplay.text = groupId
-                            binding.tvGroupTitle.text = groupName ?: "My Group"
+                            binding.tvGroupTitle.text = "$finalName ▼"
                             binding.tvGroupTitle.visibility = View.VISIBLE
                             binding.groupInfoCard.visibility = View.VISIBLE
                             Toast.makeText(context, "Joined Group!", Toast.LENGTH_SHORT).show()
