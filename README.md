@@ -7,7 +7,7 @@ ScreenCircle is an Android application that tracks your daily screen-on time and
 - **Weekly Statistics**: View your screen time history with beautiful charts.
 - **Private Groups**: Create or join groups to share stats with specific people.
 - **Leaderboard**: Compete with friends - less screen time = higher rank! 👑
-- **Realtime Sync**: Data syncs to Firebase when you open the app.
+- **Background Sync**: WorkManager syncs data every 6 hours even if you don't open the app.
 - **Material 3 Design**: Modern and clean UI with Material You support.
 
 ## 🔋 Why ScreenCircle is Battery-Friendly
@@ -22,14 +22,14 @@ Unlike other screen time apps that run constant background services, ScreenCircl
 |--------|--------------|------------|
 | Background Battery | **~0.03%/day** | 1-5%/day |
 | Background Data | **~4 KB/day** | 10-100 KB/day |
-| Permissions | 1 (Usage Access) | 5+ |
+| Permissions | **3** | 5-8 |
 | Persistent Notification | **No** | Yes |
 | Sync Frequency | Every 6 hours | Constant |
 
 ## 📱 Screenshots
 - **Home**: View today's screen time and weekly chart
 - **Groups**: Create/join groups and see the leaderboard
-- **Settings**: Manage profile, groups, and logout
+- **Settings**: Manage profile, groups, view battery info, and logout
 
 ## 🛠️ Setup Instructions (IMPORTANT)
 
@@ -71,54 +71,55 @@ Copy these rules to your Firebase Realtime Database Rules tab to ensure privacy:
 1. Open the project in **Android Studio** (Hedgehog or newer recommended).
 2. Sync Gradle.
 3. Run on a device or emulator (API 26+).
-4. **Grant Permissions**: The app will ask for "Usage Access". You must enable it for ScreenCircle in the system settings.
-5. **Optional**: Allow notifications for Android 13+ to see tracking status.
+4. **Grant Permission**: The app will ask for "Usage Access". You must enable it for ScreenCircle in the system settings.
 
 ## 📦 Project Structure
 
 ```
 app/src/main/java/com/example/screencircle/
-├── ScreenCircleApplication.kt      # Application class
+├── ScreenCircleApplication.kt       # App init + WorkManager setup
 ├── data/
 │   ├── local/
-│   │   ├── AppDatabase.kt          # Room database
-│   │   ├── DailyUsage.kt           # Usage entity
-│   │   ├── UsageDao.kt             # Database access
-│   │   └── PreferencesManager.kt   # SharedPreferences helper
+│   │   ├── AppDatabase.kt           # Room database
+│   │   ├── DailyUsage.kt            # Usage entity
+│   │   ├── UsageDao.kt              # Database access
+│   │   └── PreferencesManager.kt    # SharedPreferences helper
 │   └── repository/
-│       ├── GroupRepository.kt      # Firebase group operations
-│       └── UsageRepository.kt      # Usage data management
-├── service/
-│   ├── BootReceiver.kt             # Auto-start on boot
-│   └── ScreenTrackingService.kt    # Foreground tracking service
+│       ├── GroupRepository.kt       # Firebase group operations
+│       ├── ScreenTimeRepository.kt  # UsageStatsManager wrapper
+│       └── UsageRepository.kt       # Local usage data management
+├── worker/
+│   └── DailySyncWorker.kt           # Background sync every 6 hours
 └── ui/
     ├── login/
-    │   └── LoginActivity.kt        # Login/Register
+    │   └── LoginActivity.kt         # Login/Register
     ├── main/
-    │   └── MainActivity.kt         # Main container
+    │   └── MainActivity.kt          # Main container + permission check
     ├── home/
-    │   ├── HomeFragment.kt         # Today's usage + chart
+    │   ├── HomeFragment.kt          # Today's usage + weekly chart
     │   └── HomeViewModel.kt
     ├── dashboard/
     │   ├── GroupDashboardFragment.kt  # Groups & leaderboard
     │   ├── GroupViewModel.kt
     │   └── GroupAdapter.kt
     └── settings/
-        └── SettingsFragment.kt     # Profile & settings
+        └── SettingsFragment.kt      # Profile, groups & battery info
 ```
 
-## 📱 Permissions Used
-- `PACKAGE_USAGE_STATS`: To track screen time.
-- `FOREGROUND_SERVICE`: To keep the tracking service alive.
-- `RECEIVE_BOOT_COMPLETED`: To restart tracking after phone reboot.
-- `POST_NOTIFICATIONS`: To show tracking notification (Android 13+).
-- `INTERNET`: For Firebase sync.
+## 📱 Permissions Used (Only 3!)
+| Permission | Purpose |
+|------------|---------|
+| `INTERNET` | Firebase sync |
+| `ACCESS_NETWORK_STATE` | Check connectivity before sync |
+| `PACKAGE_USAGE_STATS` | Read screen time from Android |
+
+**No foreground service, no boot receiver, no notifications required!**
 
 ## 🎮 How to Use
 
 ### Track Your Screen Time
 1. Open the app and grant Usage Access permission
-2. The app will start tracking automatically
+2. Your screen time is automatically read from Android's built-in tracking
 3. View your stats on the Home tab
 
 ### Create/Join a Group
@@ -134,12 +135,37 @@ app/src/main/java/com/example/screencircle/
 
 ## 🔧 Tech Stack
 - **Language**: Kotlin
+- **Min SDK**: 26 (Android 8.0)
+- **Target SDK**: 34 (Android 14)
 - **UI**: Material Design 3, ViewBinding
 - **Local DB**: Room
 - **Remote DB**: Firebase Realtime Database
 - **Auth**: Firebase Authentication
+- **Background Work**: WorkManager
 - **Charts**: MPAndroidChart
 - **Architecture**: MVVM
+
+## 🏗️ How It Works
+
+### Screen Time Tracking
+```
+Android UsageStatsManager → ScreenTimeRepository → Firebase
+         ↓
+   (Digital Wellbeing)
+```
+- We read from Android's built-in tracking (same data as Digital Wellbeing)
+- Zero battery for tracking - Android already does it!
+- Sync to Firebase when app opens OR every 6 hours via WorkManager
+
+### Background Sync Flow
+```
+WorkManager (every 6 hours)
+    → Check if user logged in
+    → Check if permission granted
+    → Read today's screen time
+    → Upload to Firebase
+    → Done! (~1 second, ~0.008% battery)
+```
 
 ## 📄 License
 MIT License - feel free to use and modify!
