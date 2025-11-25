@@ -49,10 +49,8 @@ class ScreenCircleApplication : Application() {
             .build()
         
         val syncRequest = PeriodicWorkRequestBuilder<DailySyncWorker>(
-            repeatInterval = 6,                             // Run every 6 hours
-            repeatIntervalTimeUnit = TimeUnit.HOURS,
-            flexInterval = 1,                               // Can run within 1-hour window
-            flexTimeUnit = TimeUnit.HOURS                   // (allows Android to optimize)
+            6, TimeUnit.HOURS,                              // Run every 6 hours
+            1, TimeUnit.HOURS                               // Flex: can run within 1-hour window
         )
             .setConstraints(constraints)
             .build()
