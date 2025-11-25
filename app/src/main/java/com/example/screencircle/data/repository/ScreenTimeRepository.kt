@@ -1,6 +1,5 @@
 package com.example.screencircle.data.repository
 
-import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.util.Log
@@ -90,47 +89,27 @@ class ScreenTimeRepository(private val context: Context) {
     }
 
     /**
-     * Calculate actual screen-on time using UsageEvents
-     * This is more accurate than UsageStats.getTotalTimeInForeground()
+     * Calculate actual screen-on time using UsageStats
+     * This matches Digital Wellbeing by summing foreground time of all apps
      */
     private fun calculateScreenTime(startTime: Long, endTime: Long): Long {
         var totalScreenTime = 0L
-        var lastScreenOnTime = 0L
-        var isScreenOn = false
 
         try {
-            val events = usageStatsManager.queryEvents(startTime, endTime)
-            val event = UsageEvents.Event()
+            // Use INTERVAL_DAILY for better accuracy
+            val usageStatsList = usageStatsManager.queryUsageStats(
+                UsageStatsManager.INTERVAL_DAILY,
+                startTime,
+                endTime
+            )
 
-            while (events.hasNextEvent()) {
-                events.getNextEvent(event)
-
-                when (event.eventType) {
-                    UsageEvents.Event.SCREEN_INTERACTIVE -> {
-                        // Screen turned on
-                        if (!isScreenOn) {
-                            lastScreenOnTime = event.timeStamp
-                            isScreenOn = true
-                        }
-                    }
-                    UsageEvents.Event.SCREEN_NON_INTERACTIVE -> {
-                        // Screen turned off
-                        if (isScreenOn && lastScreenOnTime > 0) {
-                            totalScreenTime += (event.timeStamp - lastScreenOnTime) / 1000
-                            isScreenOn = false
-                        }
-                    }
-                }
+            // Sum up foreground time for all apps (same as Digital Wellbeing)
+            for (usageStats in usageStatsList) {
+                totalScreenTime += usageStats.totalTimeInForeground
             }
 
-            // If screen is still on, count time until now (or endTime)
-            if (isScreenOn && lastScreenOnTime > 0) {
-                val now = System.currentTimeMillis()
-                val effectiveEnd = minOf(now, endTime)
-                if (effectiveEnd > lastScreenOnTime) {
-                    totalScreenTime += (effectiveEnd - lastScreenOnTime) / 1000
-                }
-            }
+            // Convert from milliseconds to seconds
+            totalScreenTime /= 1000
 
         } catch (e: Exception) {
             Log.e("ScreenTimeRepo", "Error getting screen time", e)
