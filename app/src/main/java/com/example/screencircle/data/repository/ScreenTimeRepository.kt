@@ -1,5 +1,6 @@
 package com.example.screencircle.data.repository
 
+import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.util.Log
@@ -89,41 +90,59 @@ class ScreenTimeRepository(private val context: Context) {
     }
 
     /**
-     * Calculate actual screen-on time using UsageStats
-     * Uses INTERVAL_BEST to get accurate per-day stats without duplicates
+     * Calculate total screen-on time using UsageEvents
+     * This tracks when screen turns ON and OFF - same as Digital Wellbeing's "Screen time"
+     * 
+     * NOT summing app usage (which causes duplicates), but actual screen-on duration
      */
     private fun calculateScreenTime(startTime: Long, endTime: Long): Long {
         var totalScreenTime = 0L
+        var screenOnTime = 0L
+        var isScreenOn = false
+        val now = System.currentTimeMillis()
 
         try {
-            // Use INTERVAL_BEST for accurate stats
-            val usageStatsList = usageStatsManager.queryUsageStats(
-                UsageStatsManager.INTERVAL_BEST,
-                startTime,
-                endTime
-            )
+            val events = usageStatsManager.queryEvents(startTime, minOf(endTime, now))
+            val event = UsageEvents.Event()
 
-            // Track packages to avoid duplicates
-            val seenPackages = mutableSetOf<String>()
-            
-            // Sum up foreground time for unique apps only
-            for (usageStats in usageStatsList) {
-                // Skip if already counted or no usage
-                if (usageStats.packageName in seenPackages) continue
-                if (usageStats.totalTimeInForeground <= 0) continue
-                
-                seenPackages.add(usageStats.packageName)
-                totalScreenTime += usageStats.totalTimeInForeground
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+
+                when (event.eventType) {
+                    UsageEvents.Event.SCREEN_INTERACTIVE -> {
+                        // Screen turned ON
+                        if (!isScreenOn) {
+                            screenOnTime = event.timeStamp
+                            isScreenOn = true
+                        }
+                    }
+                    UsageEvents.Event.SCREEN_NON_INTERACTIVE -> {
+                        // Screen turned OFF
+                        if (isScreenOn && screenOnTime > 0) {
+                            totalScreenTime += event.timeStamp - screenOnTime
+                            isScreenOn = false
+                        }
+                    }
+                }
             }
 
-            // Convert from milliseconds to seconds
+            // If screen is still on, add time until now
+            if (isScreenOn && screenOnTime > 0) {
+                val effectiveEnd = minOf(now, endTime)
+                if (effectiveEnd > screenOnTime) {
+                    totalScreenTime += effectiveEnd - screenOnTime
+                }
+            }
+
+            // Convert milliseconds to seconds
             totalScreenTime /= 1000
 
         } catch (e: Exception) {
-            Log.e("ScreenTimeRepo", "Error getting screen time", e)
+            Log.e("ScreenTimeRepo", "Error calculating screen time", e)
         }
 
-        return totalScreenTime
+        // Safety cap: max 24 hours per day (86400 seconds)
+        return minOf(totalScreenTime, 86400L)
     }
 
     /**
