@@ -31,6 +31,7 @@ class GroupRepository {
         val groupData = mapOf(
             "name" to groupName,
             "owner" to userId,
+            "createdAt" to System.currentTimeMillis(),
             "members" to mapOf(userId to true)
         )
 
@@ -63,18 +64,31 @@ class GroupRepository {
         }
     }
 
+    suspend fun getGroupName(groupId: String): String? {
+        return try {
+            val snapshot = database.child("groups").child(groupId).child("name").get().await()
+            snapshot.getValue(String::class.java)
+        } catch (e: Exception) {
+            Log.e("GroupRepository", "Error getting group name", e)
+            null
+        }
+    }
+
     fun listenToGroupUsage(groupId: String, date: String) {
         database.child("groups").child(groupId).child("members")
             .addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
-                    val members = mutableListOf<GroupMember>()
+                    val memberIds = mutableListOf<String>()
                     for (child in snapshot.children) {
-                        val memberId = child.key ?: continue
-                        fetchMemberUsage(memberId, date) { member ->
-                            members.add(member)
-                            _groupMembers.postValue(members)
-                        }
+                        child.key?.let { memberIds.add(it) }
                     }
+                    
+                    if (memberIds.isEmpty()) {
+                        _groupMembers.postValue(emptyList())
+                        return
+                    }
+                    
+                    fetchAllMembersUsage(memberIds, date)
                 }
 
                 override fun onCancelled(error: DatabaseError) {
@@ -83,17 +97,36 @@ class GroupRepository {
             })
     }
 
-    private fun fetchMemberUsage(userId: String, date: String, onResult: (GroupMember) -> Unit) {
-        database.child("users").child(userId).addListenerForSingleValueEvent(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                val name = snapshot.child("profile").child("name").getValue(String::class.java) ?: "Unknown"
-                val email = snapshot.child("profile").child("email").getValue(String::class.java) ?: ""
-                val usage = snapshot.child("usage").child(date).getValue(Long::class.java) ?: 0L
-                
-                onResult(GroupMember(userId, name, email, usage))
-            }
+    private fun fetchAllMembersUsage(memberIds: List<String>, date: String) {
+        val members = mutableListOf<GroupMember>()
+        var completedCount = 0
+        
+        for (memberId in memberIds) {
+            database.child("users").child(memberId).addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val name = snapshot.child("profile").child("name").getValue(String::class.java) ?: "Unknown"
+                    val email = snapshot.child("profile").child("email").getValue(String::class.java) ?: ""
+                    val usage = snapshot.child("usage").child(date).getValue(Long::class.java) ?: 0L
+                    
+                    synchronized(members) {
+                        members.add(GroupMember(memberId, name, email, usage))
+                        completedCount++
+                        
+                        if (completedCount == memberIds.size) {
+                            _groupMembers.postValue(members.toList())
+                        }
+                    }
+                }
 
-            override fun onCancelled(error: DatabaseError) {}
-        })
+                override fun onCancelled(error: DatabaseError) {
+                    synchronized(members) {
+                        completedCount++
+                        if (completedCount == memberIds.size) {
+                            _groupMembers.postValue(members.toList())
+                        }
+                    }
+                }
+            })
+        }
     }
 }

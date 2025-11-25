@@ -1,5 +1,8 @@
 package com.example.screencircle.ui.dashboard
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -10,6 +13,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.screencircle.R
+import com.example.screencircle.data.local.PreferencesManager
 import com.example.screencircle.databinding.FragmentDashboardBinding
 
 class GroupDashboardFragment : Fragment() {
@@ -18,6 +23,7 @@ class GroupDashboardFragment : Fragment() {
     private val binding get() = _binding!!
     private val viewModel: GroupViewModel by viewModels()
     private lateinit var adapter: GroupAdapter
+    private lateinit var prefsManager: PreferencesManager
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -31,14 +37,32 @@ class GroupDashboardFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        prefsManager = PreferencesManager.getInstance(requireContext())
+
         adapter = GroupAdapter()
         binding.rvMembers.layoutManager = LinearLayoutManager(context)
         binding.rvMembers.adapter = adapter
 
         viewModel.groupMembers.observe(viewLifecycleOwner) { members ->
-            // Sort by usage ASCENDING (Less time = Winner)
-            val sortedMembers = members.sortedBy { it.todayUsage }
-            adapter.submitList(sortedMembers)
+            if (members.isNotEmpty()) {
+                // Sort by usage ASCENDING (Less time = Winner)
+                val sortedMembers = members.sortedBy { it.todayUsage }
+                adapter.submitList(sortedMembers)
+                binding.tvEmptyState.visibility = View.GONE
+                binding.rvMembers.visibility = View.VISIBLE
+            } else {
+                binding.tvEmptyState.visibility = View.VISIBLE
+                binding.rvMembers.visibility = View.GONE
+            }
+        }
+
+        viewModel.groupName.observe(viewLifecycleOwner) { name ->
+            if (name != null) {
+                binding.tvGroupTitle.text = name
+                binding.tvGroupTitle.visibility = View.VISIBLE
+                binding.groupInfoCard.visibility = View.VISIBLE
+                prefsManager.currentGroupName = name
+            }
         }
 
         binding.btnCreateGroup.setOnClickListener {
@@ -48,42 +72,108 @@ class GroupDashboardFragment : Fragment() {
         binding.btnJoinGroup.setOnClickListener {
             showJoinGroupDialog()
         }
+
+        binding.btnCopyId.setOnClickListener {
+            val groupId = prefsManager.currentGroupId
+            if (groupId != null) {
+                copyToClipboard(groupId)
+            }
+        }
+
+        // Load saved group if exists
+        loadSavedGroup()
+    }
+
+    private fun loadSavedGroup() {
+        val savedGroupId = prefsManager.currentGroupId
+        val savedGroupName = prefsManager.currentGroupName
+        
+        if (savedGroupId != null) {
+            binding.tvGroupTitle.text = savedGroupName ?: "My Group"
+            binding.tvGroupTitle.visibility = View.VISIBLE
+            binding.tvGroupIdDisplay.text = savedGroupId
+            binding.groupInfoCard.visibility = View.VISIBLE
+            viewModel.loadGroupData(savedGroupId)
+        } else {
+            binding.groupInfoCard.visibility = View.GONE
+            binding.tvGroupTitle.visibility = View.GONE
+        }
+    }
+
+    private fun copyToClipboard(text: String) {
+        val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("Group ID", text)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(context, R.string.group_id_copied, Toast.LENGTH_SHORT).show()
     }
 
     private fun showCreateGroupDialog() {
-        val input = EditText(context)
+        val input = EditText(context).apply {
+            hint = "Enter group name"
+            setPadding(48, 32, 48, 32)
+        }
+        
         AlertDialog.Builder(requireContext())
             .setTitle("Create Group")
+            .setMessage("Choose a name for your group")
             .setView(input)
             .setPositiveButton("Create") { _, _ ->
-                val name = input.text.toString()
-                viewModel.createGroup(name) { groupId ->
-                    if (groupId != null) {
-                        Toast.makeText(context, "Group Created: $groupId", Toast.LENGTH_LONG).show()
-                        viewModel.loadGroupData(groupId)
+                val name = input.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    viewModel.createGroup(name) { groupId ->
+                        if (groupId != null) {
+                            prefsManager.currentGroupId = groupId
+                            prefsManager.currentGroupName = name
+                            binding.tvGroupIdDisplay.text = groupId
+                            binding.tvGroupTitle.text = name
+                            binding.tvGroupTitle.visibility = View.VISIBLE
+                            binding.groupInfoCard.visibility = View.VISIBLE
+                            Toast.makeText(context, "Group Created! Share the ID with friends.", Toast.LENGTH_LONG).show()
+                            viewModel.loadGroupData(groupId)
+                        } else {
+                            Toast.makeText(context, "Failed to create group", Toast.LENGTH_SHORT).show()
+                        }
                     }
+                } else {
+                    Toast.makeText(context, "Please enter a group name", Toast.LENGTH_SHORT).show()
                 }
             }
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
     private fun showJoinGroupDialog() {
-        val input = EditText(context)
+        val input = EditText(context).apply {
+            hint = "Enter Group ID"
+            setPadding(48, 32, 48, 32)
+        }
+        
         AlertDialog.Builder(requireContext())
             .setTitle("Join Group")
-            .setMessage("Enter Group ID")
+            .setMessage("Enter the Group ID shared by your friend")
             .setView(input)
             .setPositiveButton("Join") { _, _ ->
-                val groupId = input.text.toString()
-                viewModel.joinGroup(groupId) { success ->
-                    if (success) {
-                        Toast.makeText(context, "Joined Group!", Toast.LENGTH_SHORT).show()
-                        viewModel.loadGroupData(groupId)
-                    } else {
-                        Toast.makeText(context, "Failed to join", Toast.LENGTH_SHORT).show()
+                val groupId = input.text.toString().trim()
+                if (groupId.isNotEmpty()) {
+                    viewModel.joinGroup(groupId) { success, groupName ->
+                        if (success) {
+                            prefsManager.currentGroupId = groupId
+                            prefsManager.currentGroupName = groupName
+                            binding.tvGroupIdDisplay.text = groupId
+                            binding.tvGroupTitle.text = groupName ?: "My Group"
+                            binding.tvGroupTitle.visibility = View.VISIBLE
+                            binding.groupInfoCard.visibility = View.VISIBLE
+                            Toast.makeText(context, "Joined Group!", Toast.LENGTH_SHORT).show()
+                            viewModel.loadGroupData(groupId)
+                        } else {
+                            Toast.makeText(context, "Failed to join. Check the Group ID.", Toast.LENGTH_SHORT).show()
+                        }
                     }
+                } else {
+                    Toast.makeText(context, "Please enter a Group ID", Toast.LENGTH_SHORT).show()
                 }
             }
+            .setNegativeButton("Cancel", null)
             .show()
     }
 

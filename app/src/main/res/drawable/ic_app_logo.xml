@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="100dp"
+    android:height="100dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <!-- Outer circle -->
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M50,5 A45,45 0 1 1 49.99,5 Z"/>
+    <!-- Inner circle (screen) -->
+    <path
+        android:fillColor="#EADDFF"
+        android:pathData="M50,20 A30,30 0 1 1 49.99,20 Z"/>
+    <!-- Clock hands / screen time indicator -->
+    <path
+        android:fillColor="#6750A4"
+        android:strokeWidth="3"
+        android:strokeColor="#6750A4"
+        android:pathData="M50,50 L50,30"/>
+    <path
+        android:fillColor="#6750A4"
+        android:strokeWidth="3"
+        android:strokeColor="#6750A4"
+        android:pathData="M50,50 L65,55"/>
+    <!-- Center dot -->
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M50,50 m-4,0 a4,4 0 1,1 8,0 a4,4 0 1,1 -8,0"/>
+</vector>
