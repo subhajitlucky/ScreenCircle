@@ -133,11 +133,10 @@ users/{uid}/groups/{groupId}=true
 groups/{groupId}/
   name
   owner
-  inviteCode
   inviteCodeHash
   createdAt
   members/{uid}/{name, joinedAt, joinedVia}
-  usage/{uid}/{yyyy-MM-dd}=seconds
+  usage/{uid}/{yyyy-MM-dd}/{seconds, sourceUpdatedAt}
 
 inviteCodes/{sha256(code)}/
   groupId
@@ -147,29 +146,30 @@ inviteCodes/{sha256(code)}/
 
 ### Privacy rules
 
-- A user can read/write only their own private profile and canonical usage.
+- A user can read/write only their own private profile, compatibility version heartbeat, and canonical usage.
 - Anonymous users cannot read application data.
 - A non-member cannot read a group, its member names, or its usage.
 - A member can read only groups in which their UID is a member.
 - A user may add only their own membership and only when `joinedVia` references an active invite whose `groupId` matches the destination group.
 - A user cannot alter another member, owner, group name, or existing group usage mirror.
 - Only the owner can rename a group, rotate/revoke an invite, transfer ownership, or delete a group.
-- Only a member can write their own mirrored usage for a group they belong to.
-- Group usage mirrors contain seconds only; emails are never copied into groups.
+- A member can write only their own group usage mirror, and the mirror must exactly match the already-committed canonical user usage value and source timestamp.
+- Group usage mirrors contain no email or private profile data.
+- Canonical daily totals are monotonically non-decreasing for normal client writes; Admin migration is the only normal-path mechanism allowed to correct historical data.
 - The owner cannot leave until ownership is transferred or the group is deleted.
 
 ### Invite codes
 
 - Generate at least 128 bits of entropy and encode as a user-friendly Base32 string.
-- Store the plain code only in the owner/member-readable group record.
-- Use the lowercase SHA-256 hash as the `inviteCodes` path.
-- A joining user hashes the entered code, reads the invite node, and includes that hash in the member record.
+- Never persist the plain code in Firebase. Show it once after generation and let the owner copy/share it immediately; a lost code is replaced by rotation.
+- Use the lowercase SHA-256 hash as both `groups/{groupId}/inviteCodeHash` and the `inviteCodes` path.
+- A joining user hashes the entered code, reads the active invite node, and includes that hash in the member record. The hash is the bearer secret and must not be exposed to non-members.
 - Invite codes are revocable and reusable until rotated; no unsupported one-time-use claim is made.
 - The UI provides rotate, copy, share, and revoke operations for owners.
 
 ### Atomic mutations
 
-Create, join, leave, ownership transfer, and delete operations use Firebase multipath updates or transactions so related membership and reverse-index records change atomically from the client's perspective. Security rules validate every path in the update.
+Create, join, leave, ownership transfer, and delete operations use one Firebase multipath update per logical operation so related membership, reverse-index, invite, owner, and cleanup records change atomically from the client's perspective. Security rules validate every path in the update. Usage sync is deliberately two-phase: commit and await canonical usage first, then commit mirrors that rules compare to that canonical value; any mirror failure leaves the local ledger dirty for an idempotent retry.
 
 ## Existing-Data Migration
 
@@ -179,32 +179,35 @@ Implement a Node.js migration utility using the Firebase Admin SDK. It must supp
 npm run firebase:migrate:dry-run
 npm run firebase:migrate:apply -- --confirm
 npm run firebase:migrate:verify
+npm run firebase:migrate:rollback -- --confirm
 ```
 
 ### Migration stages
 
 1. Preflight authentication, project selection, rule compatibility, and expected record counts.
-2. Export a timestamped backup and generate SHA-256 checksums.
-3. Move profile email from the legacy public profile to `users/{uid}/private/email`.
-4. Preserve/create a sanitized public display name.
-5. Generate invite codes for every existing group.
-6. Convert legacy boolean memberships into named member records.
-7. Mirror existing canonical usage into every relevant group.
-8. Verify user, group, membership, invite, and usage counts and checksums.
-9. Produce a machine-readable report and rollback export.
+2. Export a timestamped, versioned backup and generate SHA-256 checksums.
+3. Resolve identities only by the existing Firebase UID path; never attach historical data by matching email. Quarantine ambiguous or malformed legacy records for manual review.
+4. Move profile email from the legacy public profile to `users/{uid}/private/email`.
+5. Preserve/create a sanitized public display name.
+6. Generate invite codes for every existing group, write only hashes, and deliver plaintext codes through a checksum-protected operator export rather than Firebase.
+7. Convert legacy boolean memberships into named member records while tolerating old clients that still write booleans during the compatibility window.
+8. Mirror existing canonical usage into every relevant group.
+9. Verify user, group, membership, invite, and usage counts and checksums; preserve unknown fields in the backup/archive instead of silently dropping them.
+10. Produce a machine-readable report and a tested restore/rollback package.
 
 The migration defaults to dry-run and refuses production apply without both an explicit confirmation flag and verified backup metadata.
 
 ### Expand–migrate–contract rollout
 
-1. Deploy additive v2 writes while compatibility reads remain available.
-2. Publish the compatibility application release.
-3. Run migration dry-run and review anomalies.
-4. Run the migration and verify it.
-5. Roll out the v2-only application gradually.
-6. Monitor auth, sync, group reads, and worker failures.
-7. Switch to strict v2 rules.
-8. Remove compatibility paths only after the agreed observation window.
+1. Deploy expand rules that permit validated additive v2 data and the known legacy shape; keep strict contract rules staged but inactive.
+2. Publish a compatibility application release that dual-reads v2/legacy data, normalizes old boolean memberships, writes a compatibility-safe superset, and reports a private per-user version heartbeat.
+3. Run migration dry-run and review every quarantined or ambiguous record.
+4. Run the migration and verify counts/checksums while monitoring old-client writes.
+5. Run an executable Admin readiness assertion that verifies migration status and that every recently active account reports a compatible version; wait for the agreed legacy-client observation window when the assertion fails.
+6. Roll out the v2-only application gradually.
+7. Monitor auth, canonical/mirror sync, group reads, worker failures, migration verification, and client-version adoption.
+8. Switch to strict v2 contract rules only after migration verification and minimum-version gates pass.
+9. Remove legacy paths only after the agreed observation window; retain tested rollback until then.
 
 ## UI and Accessibility
 
