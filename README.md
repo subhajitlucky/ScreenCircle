@@ -39,7 +39,11 @@ You **MUST** set up Firebase for this app to work.
 1. Go to [Firebase Console](https://console.firebase.google.com/).
 2. Create a new project.
 3. Add an Android App with package name: `com.example.screencircle`.
-4. Download `google-services.json` and place it in the `app/` directory of this project.
+4. Download `google-services.json` and place it in the `app/` directory of this project. For compile-only local verification without real Firebase credentials, copy the sanitized fixture instead:
+   ```bash
+   cp app/google-services.json.example app/google-services.json
+   ```
+   The destination `app/google-services.json` is Git-ignored. This fixture is only for compilation/local verification; runtime authentication and sync still require a valid developer Firebase configuration.
 5. **Enable Authentication**:
    - Go to Build > Authentication > Sign-in method.
    - Enable **Email/Password**.
