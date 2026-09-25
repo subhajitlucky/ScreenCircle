@@ -10,7 +10,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("https://jitpack.io") } // For MPAndroidChart
+        maven {
+            url = uri("https://jitpack.io")
+            content { includeModule("com.github.PhilJay", "MPAndroidChart") }
+        }
     }
 }
 

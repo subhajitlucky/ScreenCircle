@@ -1,5 +1,12 @@
-# Google Services
+# Local toolchains and secrets
+.tools/
+local.properties
 google-services.json
+keystore.properties
+*.jks
+*.keystore
+firebase-debug.log
+firebase-database*.json
 
 # Android/Gradle build files
 build/

@@ -1,0 +1,8 @@
+# Normalize line endings in the repository, but keep the generated Windows
+# wrapper CRLF in the working tree. Without this, `git diff --check` reports
+# every line of gradlew.bat as trailing whitespace.
+* text=auto
+gradlew text eol=lf
+gradlew.bat text eol=crlf
+*.bat text eol=crlf
+*.jar binary
