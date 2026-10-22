@@ -52,7 +52,10 @@ You **MUST** set up Firebase for this app to work.
    - Start in **Test Mode** (or use the rules below).
 
 ### 2. Database Rules
-Copy these rules to your Firebase Realtime Database Rules tab to ensure privacy:
+
+> **Security warning:** the rules below are prototype-only. They let any authenticated user read every user profile and usage record, and write any group. **Do not deploy them to a production Firebase project.** The hardened schema and authorization rules (private/public profiles, member-scoped groups, invite hashes) are specified in [`docs/plans/2026-09-25-screencircle-production-hardening-design.md`](docs/plans/2026-09-25-screencircle-production-hardening-design.md) and still need to be implemented.
+
+For local prototyping only, copy these rules to your Firebase Realtime Database Rules tab:
 
 ```json
 {
